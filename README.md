@@ -1,7 +1,7 @@
-# Local LLM server: llama-swap + llama.cpp in Docker
+# Local LLM server: llama-swap + Hermes Agent in Docker
 
 **Target host:** Ubuntu Server 26.04, RTX 4090 (24 GB)
-**Client access:** trusted LAN, no auth, bound to `0.0.0.0:8080`
+**Client access:** trusted LAN, bound to `0.0.0.0`
 **Cache:** Docker named volume (persists across container rebuilds)
 
 ---
@@ -61,16 +61,18 @@ If the smoke test prints `nvidia-smi` output from inside the container, you're g
 ```
 ~/llm/
 ├── docker-compose.yml
-└── config.yaml
+├── .env                  # HERMES_API_KEY (chmod 600)
+├── config.yaml           # llama-swap model configs
+└── hermes-data/          # Hermes' persistent state (config, sessions, skills, .env, logs)
 ```
 
 ```bash
-mkdir -p ~/llm && cd ~/llm
+mkdir -p ~/llm/hermes-data && cd ~/llm
 ```
 
 ---
 
-## 4. `~/llm/config.yaml`
+## 4. `~/llm/config.yaml` (llama-swap)
 
 ```yaml
 healthCheckTimeout: 300
@@ -117,7 +119,19 @@ Notes:
 
 ---
 
-## 5. `~/llm/docker-compose.yml`
+## 5. `~/llm/.env`
+
+```bash
+# Generate a random key for Hermes' API server (≥8 chars)
+echo "HERMES_API_KEY=$(openssl rand -hex 24)" > .env
+chmod 600 .env
+```
+
+---
+
+## 6. `~/llm/docker-compose.yml`
+
+No dashboard service — keep it off by default and start it ad-hoc when needed (section 10).
 
 ```yaml
 services:
@@ -126,7 +140,7 @@ services:
     container_name: llama-swap
     restart: unless-stopped
     ports:
-      - "8080:8080"   # LAN-exposed
+      - "8080:8080"   # LAN-exposed (raw model API, no auth)
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - hf-cache:/root/.cache/huggingface
@@ -145,53 +159,168 @@ services:
       - "--listen"
       - "0.0.0.0:8080"
 
+  hermes-agent:
+    image: nousresearch/hermes-agent:main
+    container_name: hermes
+    restart: unless-stopped
+    depends_on:
+      - llama-swap
+    ports:
+      - "8642:8642"   # LAN-exposed (OpenAI-compatible API, key-auth)
+    volumes:
+      - ./hermes-data:/opt/data
+    environment:
+      - HERMES_UID=1000
+      - HERMES_GID=1000
+      - API_SERVER_ENABLED=true
+      - API_SERVER_HOST=0.0.0.0
+      - API_SERVER_KEY=${HERMES_API_KEY}
+    command: ["gateway", "run"]
+
 volumes:
   hf-cache:
 ```
 
-The `hf-cache` named volume persists model downloads across `docker compose down` / `up` cycles. Models are large (15–20 GB each) — only re-downloaded if you delete the volume.
+### Service summary
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| llama-swap | 8080 | Serves your local models (OpenAI-compatible, no auth) |
+| hermes-agent | 8642 | Hermes gateway — tools, cron, subagents, OpenAI-compatible API with `API_SERVER_KEY` |
+
+`hf-cache` (named volume) persists model downloads across `docker compose down`/`up`. Models are 15–20 GB each — only re-downloaded if you delete the volume.
+
+`./hermes-data` (bind mount) holds Hermes' config, sessions, skills, memory, logs, and its own `.env` of tool API keys.
+
+`HERMES_UID`/`HERMES_GID` are baked to `1000:1000`; if your host user differs (`id -u`/`id -g`), edit them and chown `hermes-data` to match.
 
 ---
 
-## 6. Bring it up
+## 7. Bring up llama-swap first
 
 ```bash
 cd ~/llm
-docker compose up -d
-docker compose logs -f llama-swap
+docker compose up -d llama-swap
+docker compose logs -f llama-swap    # Ctrl-C once it's healthy
+curl http://localhost:8080/v1/models # confirms it sees your model ids
 ```
 
-First request to any model triggers download (slow) then load (~10–30s). Subsequent requests are fast. Switching models triggers an unload + load.
+Note the model id you want as Hermes' default (e.g. `qwen3.6-27b-64k`) — needed in step 8.
 
 ---
 
-## 7. Verify from the client machine
+## 8. Run the Hermes setup wizard (one-off)
 
-Replace `<server-ip>` with the LAN IP of the Ubuntu host:
+Hermes won't start until `hermes-data/` has a config. Run the interactive wizard, passing the same UID/GID as the compose service so the files are owned correctly from the start (the image defaults to 10000:10000, which will lock you out):
 
 ```bash
-# List models llama-swap knows about
-curl http://<server-ip>:8080/v1/models
+docker run -it --rm \
+  -v "$PWD/hermes-data:/opt/data" \
+  -e HERMES_UID=1000 -e HERMES_GID=1000 \
+  nousresearch/hermes-agent:main setup
+```
 
-# Smoke-test inference (triggers a load on first call)
-curl http://<server-ip>:8080/v1/chat/completions \
+When the wizard asks about an LLM provider, pick **custom / OpenAI-compatible** if offered, otherwise accept defaults and fix the config below. Skip Telegram/Discord/Slack unless you actually want them.
+
+Then edit `hermes-data/config.yaml` so the `model:` block points at llama-swap by service name (compose DNS):
+
+```yaml
+model:
+  provider: custom
+  model: qwen3.6-27b-64k            # must match a key from config.yaml
+  base_url: http://llama-swap:8080/v1
+  api_key: "none"
+```
+
+Tool API keys (Tavily, Firecrawl, ElevenLabs, etc.) live in `hermes-data/.env` — add as needed.
+
+If you ever forgot the `-e HERMES_UID/-e HERMES_GID` flags (or ran a different image command that fell back to 10000:10000), fix ownership before starting the gateway:
+
+```bash
+sudo chown -R 1000:1000 hermes-data    # match HERMES_UID/HERMES_GID
+```
+
+---
+
+## 9. Bring up Hermes
+
+```bash
+docker compose up -d hermes-agent
+docker compose logs -f hermes-agent    # watch for "API server listening on 0.0.0.0:8642"
+```
+
+---
+
+## 10. Verify end-to-end
+
+```bash
+# llama-swap direct
+curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "qwen3.6-27b-64k",
     "messages": [{"role": "user", "content": "Say hi in one word."}]
   }'
+
+# Hermes gateway → llama-swap → model
+HERMES_KEY=$(grep HERMES_API_KEY .env | cut -d= -f2)
+curl http://localhost:8642/health
+curl http://localhost:8642/v1/chat/completions \
+  -H "Authorization: Bearer $HERMES_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "default",
+    "messages": [{"role": "user", "content": "Say hi in one word."}]
+  }'
+
+# Chat with Hermes from the host (CLI in the container)
+# Note: hermes binary lives in the project venv, not on $PATH. We also pass
+# -u hermes so session files stay owned by HERMES_UID, not root.
+docker exec -it -u hermes hermes /opt/hermes/.venv/bin/hermes chat
 ```
 
-If the server doesn't respond from the client:
-- Check firewall: `sudo ufw status` — allow 8080 from your LAN subnet if ufw is active
-- Check the container is listening: `docker compose exec llama-swap ss -tlnp | grep 8080`
-- Check NVIDIA passthrough: `docker compose exec llama-swap nvidia-smi`
+First request to any model triggers download (slow) then load (~10–30s); subsequent requests are fast. Switching models triggers unload + load.
 
 ---
 
-## 8. opencode client config
+## 11. Dashboard (on-demand, optional)
 
-On the client machine, `~/.config/opencode/opencode.json`:
+The dashboard is not in the compose file because it stores API keys with no built-in auth. Run it ad-hoc against the same data dir when you need it:
+
+```bash
+docker run --rm -it \
+  -v "$PWD/hermes-data:/opt/data" \
+  -p 127.0.0.1:9119:9119 \
+  nousresearch/hermes-agent:main dashboard --host 0.0.0.0 --no-open
+# open http://localhost:9119, Ctrl-C when done
+```
+
+For remote access, tunnel: `ssh -L 9119:localhost:9119 user@<server-ip>` then visit `http://localhost:9119`.
+
+If you'd rather have it always-on but auth'd on the LAN, put Caddy with `basicauth` in front and bind only Caddy to `0.0.0.0:9119`.
+
+What you give up by not running it persistently:
+- Visual token/cost analytics
+- Full-text search across past sessions
+- Click-driven cron job management (still configurable via files)
+- In-browser TUI chat (use `docker exec -it hermes hermes` instead)
+
+Everything else (config, API keys, skills, sessions) is editable from files or the REST API on `:8642`.
+
+---
+
+## 12. Client access (opencode / other machines)
+
+### URLs from the LAN
+
+| What | URL | Auth |
+|------|-----|------|
+| llama-swap API | `http://<server-ip>:8080/v1` | none |
+| Hermes gateway API | `http://<server-ip>:8642/v1` | `Bearer $HERMES_API_KEY` |
+
+### opencode client config
+
+Talk to llama-swap directly (no auth, lets you pick a model id and trigger swaps explicitly). `~/.config/opencode/opencode.json` on the client:
 
 ```json
 {
@@ -218,29 +347,48 @@ Model IDs must match the keys in `config.yaml` exactly — that's the swap trigg
 
 In opencode: `/models` → pick a Qwen3.6 entry.
 
+If the server doesn't respond from the client:
+- Firewall: `sudo ufw status` — allow 8080 (and 8642 if you want to reach Hermes too) from your LAN subnet if ufw is active
+- Container listening: `docker compose exec llama-swap ss -tlnp | grep 8080`
+- NVIDIA passthrough: `docker compose exec llama-swap nvidia-smi`
+
 ---
 
-## 9. Day-2 operations
+## 13. Day-2 operations
 
 ```bash
 # View logs
 docker compose logs -f llama-swap
+docker compose logs -f hermes-agent
 
-# Restart (e.g. after editing config.yaml)
+# Restart a service
 docker compose restart llama-swap
+docker compose restart hermes-agent
 
-# Update to a newer image
-# 1. find a newer tag with the curl command in section 1
+# Ad-hoc Hermes chat (binary is in the venv; -u hermes preserves file ownership)
+docker exec -it -u hermes hermes /opt/hermes/.venv/bin/hermes chat
+
+# Edit Hermes config (model, providers, tool keys)
+$EDITOR hermes-data/config.yaml
+$EDITOR hermes-data/.env
+docker compose restart hermes-agent
+
+# Update llama-swap to a newer image
+# 1. find a newer tag with the curl in section 1
 # 2. edit docker-compose.yml
 docker compose pull
 docker compose up -d
+
+# Update Hermes to latest :main
+docker compose pull hermes-agent
+docker compose up -d hermes-agent
 
 # Wipe model cache (force re-download)
 docker compose down
 docker volume rm llm_hf-cache
 docker compose up -d
 
-# See what's currently loaded in VRAM
+# What's currently loaded in VRAM
 nvidia-smi
 ```
 
@@ -250,6 +398,8 @@ nvidia-smi
 
 - **96K config is untested** on this hardware — watch first run for OOM, drop `-c` if needed.
 - **128K config is tight** — if it OOMs, try `UD-Q2_K_XL` (12 GB) instead of `UD-Q3_K_XL`.
-- **No auth** — fine for trusted LAN. If this machine ever joins an untrusted network, put Tailscale or a reverse-proxy with basic-auth in front before exposing further.
+- **llama-swap has no auth** on `:8080`. Fine for trusted LAN. If the host ever joins an untrusted network, front it with Tailscale or a reverse proxy with auth.
+- **Hermes API key is shared** — every client uses the same `HERMES_API_KEY`. If you need per-user auth or audit, put a proxy in front.
 - **TTL of 10 min** is a guess; tune based on usage patterns (longer = fewer cold-load delays, but a single model squats on VRAM longer).
+- **Dashboard is opt-in** (section 11). If you find yourself running it daily, promote it to a `profiles: ["ui"]` compose service so `docker compose --profile ui up -d` toggles it.
 

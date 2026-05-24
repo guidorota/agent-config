@@ -23,5 +23,23 @@ services:
       - "--listen"
       - "0.0.0.0:8080"
 
+  hermes-agent:
+    image: nousresearch/hermes-agent
+    container_name: hermes
+    restart: unless-stopped
+    depends_on:
+      - llama-swap
+    ports:
+      - "8642:8642"             # OpenAI-compatible API (LAN-exposed)
+    volumes:
+      - ./hermes-data:/opt/data
+    environment:
+      - HERMES_UID=1000
+      - HERMES_GID=1000
+      - API_SERVER_ENABLED=true
+      - API_SERVER_HOST=0.0.0.0
+      - API_SERVER_KEY=${HERMES_API_KEY}   # min 8 chars, set in .env
+    command: ["gateway", "run"]
+
 volumes:
   hf-cache:
