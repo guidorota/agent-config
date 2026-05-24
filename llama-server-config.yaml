@@ -1,0 +1,46 @@
+healthCheckTimeout: 300
+
+models:
+  qwen3.6-27b-64k:
+    cmd: |
+      llama-server -hf unsloth/Qwen3.6-27B-MTP-GGUF:UD-Q4_K_XL
+      --port ${PORT} --host 0.0.0.0
+      -ngl 99 -fa on -np 1
+      -c 65536
+      -ctk q8_0 -ctv q8_0
+      --spec-type draft-mtp --spec-draft-n-max 2
+      --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0.0
+    ttl: 1800
+
+  qwen3.6-27b-96k:
+    cmd: |
+      llama-server -hf unsloth/Qwen3.6-27B-MTP-GGUF:IQ4_XS
+      --port ${PORT} --host 0.0.0.0
+      -ngl 99 -fa on -np 1
+      -c 98304
+      -ctk q4_0 -ctv q4_0
+      --spec-type draft-mtp --spec-draft-n-max 2
+      --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0.0
+    ttl: 1800
+
+  qwen3.6-27b-128k:
+    cmd: |
+      llama-server -hf unsloth/Qwen3.6-27B-MTP-GGUF:UD-Q3_K_XL
+      --port ${PORT} --host 0.0.0.0
+      -ngl 99 -fa on -np 1
+      -c 131072
+      -ctk q4_0 -ctv q4_0
+      --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0.0
+    ttl: 1800
+    
+  qwen3.6-27b-256k:
+    cmd: |
+      llama-server -hf unsloth/Qwen3.6-27B-MTP-GGUF:UD-Q4_K_XL
+      --port ${PORT} --host 0.0.0.0
+      -ngl 40 -fa on -np 1
+      -c 262144
+      -ctk q8_0 -ctv q8_0
+      --spec-type draft-mtp --spec-draft-n-max 2
+      --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0.0
+    ttl: 1800
+

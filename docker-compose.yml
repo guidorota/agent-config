@@ -1,0 +1,27 @@
+services:
+  llama-swap:
+    image: ghcr.io/mostlygeek/llama-swap:unified-cuda-2026-05-23
+    container_name: llama-swap
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # LAN-exposed
+    volumes:
+      - ./llama-server-config.yaml:/app/config.yaml:ro
+      - hf-cache:/root/.cache/huggingface
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command:
+      - "--config"
+      - "/app/config.yaml"
+      - "--listen"
+      - "0.0.0.0:8080"
+
+volumes:
+  hf-cache:

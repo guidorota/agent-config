@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "llamacpp": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "llama.cpp (LAN)",
+      "options": {
+        "baseURL": "http://192.168.0.28:8080/v1",
+        "apiKey": "sk-no-auth"
+      },
+      "models": {
+        "qwen3.6-27b-64k":  { "name": "Qwen3.6 27B (64K)",  "limit": { "context": 65536,  "output": 32768 } },
+        "qwen3.6-27b-96k":  { "name": "Qwen3.6 27B (96K)",  "limit": { "context": 98304,  "output": 32768 } },
+        "qwen3.6-27b-128k": { "name": "Qwen3.6 27B (128K)", "limit": { "context": 131072, "output": 32768 } }
+      }
+    }
+  }
+}
