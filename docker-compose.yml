@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"   # LAN-exposed
-    cpuset: "0-15"    # Pins to all CPUs, makes performance more predictable, useful for CPU offloading
+    cpuset: "0,2,4,6,8,10,12,14" # Pins to all physical cores, not SMT ones
     volumes:
       - ./llama-server-config.yaml:/app/config.yaml:ro
       - hf-cache:/root/.cache/huggingface
