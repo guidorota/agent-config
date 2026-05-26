@@ -1,2 +1,3 @@
 .env
 hermes-data/*
+models/*

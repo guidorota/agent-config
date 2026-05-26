@@ -5,9 +5,11 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"   # LAN-exposed
+    cpuset: "0-15"    # Pins to all CPUs, makes performance more predictable, useful for CPU offloading
     volumes:
       - ./llama-server-config.yaml:/app/config.yaml:ro
       - hf-cache:/root/.cache/huggingface
+      - ./models:/models:ro
     environment:
       - HF_HOME=/root/.cache/huggingface
     deploy:

@@ -390,6 +390,9 @@ docker compose up -d
 
 # What's currently loaded in VRAM
 nvidia-smi
+
+# Debugging CUDA OOM
+nvidia-smi dmon -s mu -d 1
 ```
 
 ---
