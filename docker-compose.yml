@@ -12,6 +12,10 @@ services:
       - ./models:/models:ro
     environment:
       - HF_HOME=/root/.cache/huggingface
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     deploy:
       resources:
         reservations:
