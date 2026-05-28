@@ -5,7 +5,7 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "llama.cpp (LAN)",
       "options": {
-        "baseURL": "http://192.168.0.28:8080/v1",
+        "baseURL": "https://llama.local.guidorota.com/v1",
         "apiKey": "sk-no-auth"
       },
       "models": {
