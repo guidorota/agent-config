@@ -1,5 +1,7 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "model": "llamacpp/qwen3.6-27b-64k",
+  "small_model": "llamacpp/qwen3.5-2b-2k",
   "provider": {
     "llamacpp": {
       "npm": "@ai-sdk/openai-compatible",
@@ -9,8 +11,8 @@
         "apiKey": "sk-no-auth"
       },
       "models": {
-        "qwen3.5-0.8b-16k": { "name": "Qwen3.5 0.8B (16K)", "limit": { "context": 16384, "output": 4096 } },
-        "qwen3.6-27b-64k":  { "name": "Qwen3.6 27B (64K)",  "limit": { "context": 65536,  "output": 32768 } },
+        "qwen3.5-2b-8k": { "name": "Qwen3.5 2B (8K)", "limit": { "context": 8192, "output": 256 } },
+        "qwen3.6-27b-64k":  { "name": "Qwen3.6 27B (64K)",  "limit": { "context": 65536,  "output": 16384 } },
         "qwen3.6-27b-96k":  { "name": "Qwen3.6 27B (96K)",  "limit": { "context": 98304,  "output": 32768 } },
         "qwen3.5-122b-96k": { "name": "Qwen3.5 122B (96K)", "limit": { "context": 98304, "output": 32768 } }
 	
