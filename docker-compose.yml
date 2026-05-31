@@ -12,6 +12,7 @@ services:
       - ./models:/models:ro
     environment:
       - HF_HOME=/root/.cache/huggingface
+    shm_size: "2g"
     ulimits:
       memlock:
         soft: -1
