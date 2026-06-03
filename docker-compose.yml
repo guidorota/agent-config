@@ -30,23 +30,16 @@ services:
       - "--listen"
       - "0.0.0.0:8080"
 
-  hermes-agent:
-    image: nousresearch/hermes-agent
-    container_name: hermes
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
     restart: unless-stopped
-    depends_on:
-      - llama-swap
     ports:
-      - "8642:8642"             # OpenAI-compatible API (LAN-exposed)
+      - "8081:8080"
     volumes:
-      - ./hermes-data:/opt/data
+      - ./open-webui-data:/app/backend/data
     environment:
-      - HERMES_UID=1000
-      - HERMES_GID=1000
-      - API_SERVER_ENABLED=true
-      - API_SERVER_HOST=0.0.0.0
-      - API_SERVER_KEY=${HERMES_API_KEY}   # min 8 chars, set in .env
-    command: ["gateway", "run"]
+      - OPENAI_API_BASE_URLS=http://llama-swap:8080/v1
 
 volumes:
   hf-cache:

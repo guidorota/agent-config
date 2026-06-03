@@ -1,3 +1,4 @@
 .env
 hermes-data/*
+open-webui-data/*
 models/*
